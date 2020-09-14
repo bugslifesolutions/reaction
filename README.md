@@ -19,6 +19,66 @@ docker-compose up -d # starts a MongoDB container and a Reaction API container
 docker-compose logs -f api # view Reaction API container logs
 ```
 
+## Debugging host sourced API plugin in Docker Container
+
+### Outline of process
+1) compose a running Reaction 'dev' stack as per docker-compose.dev.yml
+2) stop 'api' service (as it defaults to `npm run start:dev`)
+3) start 'api' service with alternate *debug/inspect command*
+4) copy local API Plugin source to container and tell node to use it (bin/package-link)
+5) Resume debugger
+
+### 1) compose a running Reaction 'dev' stack as per docker-compose.dev.yml
+```sh
+docker-compose up -d # starts a MongoDB container and a Reaction API container
+```
+### 2) stop 'api' service (as it defaults to `npm run start:dev`)
+```sh
+docker-compose stop api
+```
+
+### 3) Start 'api' service with alternate *debug/inspect command* (via Compose up w/override file)
+```sh
+rm docker-compose.override.yml & ln -s docker-compose.debug.yml docker-compose.override.yml # do this once after initial clone and after every pull or checkout
+```
+
+```sh
+docker-compose up -d # starts a MongoDB container and a Reaction API container
+```
+
+### 3) Start 'api' service with alternate *debug/inspect command* (via Compose run command)
+```sh
+docker-compose run -d --rm --service-ports --name api api npm run inspect-brk:docker # run the api service as per docker-compose but with 'npm run inspect-brk:docker' command
+```
+
+### 4) copy local API Plugin source to container and tell node to use it (bin/package-link)
+[see Adding a Custom API Plugin](#adding-a-custom-api-plugin)
+
+```sh
+./bin/package-link
+```
+This will:
+- copy `yalc-packages` referenced source directories to the container
+- create a link in `node_modules` to the `.yalc` cache in the project root directory.  eg. `api-plugin-es-catalog-sync -> /usr/local/src/app/.yalc/@bls/api-plugin-es-catalog-sync`
+- create a link in the `.yalc` cache to the container copy of the source
+
+### 5) Resume Debugger to proceed with API service loading.
+
+### Adding a Custom API Plugin
+
+#### Prepare your custom API plugin source.
+- See tbd for API plugin guidelines
+- Add `"@yourdomain/api-plugin-yourname": "file://.yalc/@yourdomain/api-plugin-yourname` to `package.json` 
+- Add `../api-plugins/api-plugin-yourname=true` to `yalc.packages.example`
+- Add `"apiPluginYourname": "@yourdomain/api-plugin-yourname"` to `plugins.json` 
+
+#### Update the App in Docker Container with Node Inspector
+```sh
+./bin/package-link
+docker-compose stop api #Stop the API container, since NPM install is only performed at container startup, not Reaction server startup!
+docker-compose start api 
+```
+
 To stop the API and the MongoDB server, enter `docker-compose down`.
 
 ## Start App Without Docker (Not Recommended)

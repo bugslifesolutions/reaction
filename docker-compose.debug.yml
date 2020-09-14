@@ -2,7 +2,7 @@
 # The local files are mounted into the created container.
 #
 # Usage:
-#  ln -s docker-compose.dev.yml docker-compose.override.yml
+#  ln -s docker-compose.debug.yml docker-compose.override.yml
 #  docker-compose up [-d]
 #
 # To go back to running the published image:
@@ -13,16 +13,18 @@ version: '3.4'
 services:
   api:
     image: reactioncommerce/node-dev:12.14.1-v3
-    entrypoint: [ "tini", "--", "tail", "-f", "/dev/null"]
+    # Override the default: 
+    #   entrypoint: ["tini", "--", "/usr/local/src/app-scripts/entrypoint.sh"]
+    # which ensures permissions are cool and executes the default command unless passed an override command as the first argument:
+    #   npm run start:dev
+    entrypoint: ["tini", "--", "/usr/local/src/app-scripts/entrypoint.sh", "npm", "run", "inspect-brk:docker"]    
     ports:
       - "3000:3000"
       - "9229:9229"
     volumes:
       - .:/usr/local/src/app:cached
       - api_node_modules:/usr/local/src/app/node_modules # do not link node_modules in, and persist it between dc up runs
-      - yalc_cache:/usr/local/src/app/.yalc # do not link .yalc module cache in, and persist it between dc up runs
 
 volumes:
   mongo-db4:
   api_node_modules:
-  yalc_cache:

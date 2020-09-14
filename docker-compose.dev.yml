@@ -20,6 +20,7 @@ services:
       - .:/usr/local/src/app:cached
       - api_node_modules:/usr/local/src/app/node_modules # do not link node_modules in, and persist it between dc up runs
 
+
 volumes:
   mongo-db4:
   api_node_modules:
