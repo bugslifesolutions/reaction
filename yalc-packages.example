@@ -36,4 +36,4 @@
 ../api-plugins/api-plugin-taxes=false
 ../api-plugins/api-plugin-taxes-flat-rate=false
 ../api-plugins/api-plugin-translations=false
-../api-plugins/api-plugin-es-catalog-sync=true
+../api-plugins/api-plugin-es-catalog-sync=add

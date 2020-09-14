@@ -13,11 +13,51 @@ set -o posix    # more strict failures in subshells
 IFS="$(printf "\n\t")"
 # ---- End unofficial bash strict mode boilerplate
 
+function execInContainer() {
+  local command="cd /usr/local/src/app && $1"
+  docker exec --user node  ${container_id} sh -c ${command}
+}
+
+function copy_package_to_container() {
+  local package_name="$1"
+  local package_path="$2"
+  local container_destination_path="${container_copied_packages_path}/${package_name}"
+
+  echo "Copying `${package_path}` package code into container to ${container_destination_path}..."
+  execInContainer "mkdir -p ${container_destination_path}"
+  docker cp "${package_path}/." "${container_id}:${container_destination_path}"
+  echo "Publishing ${container_destination_path} to yalc store and updating all projects that reference it..."
+  execInContainer "cd ${container_destination_path} && yalc push --files"
+}
+
+function add_and_link_package() {
+  local package_name="$1"
+
+  echo "Adding ${package_name} to package.json and linking to yalc file store"
+  execInContainer "yalc add ${package_name}"
+}
+
+function link_package() {
+  local package_name="$1"
+  # Then yalc link into this project
+  echo "Linking package ${package_name} into API..."
+  execInContainer "cd /usr/local/src/app && yalc link ${package_name}"
+}
+
+function unlink_package() {
+  local package_name="$1"
+  echo "Unlinking package ${package_name} from API..."
+  execInContainer "cd /usr/local/src/app && yalc remove ${package_name}"
+  execInContainer "rm -rf /usr/local/src/app/node_modules/${package_name}"
+}
+
+
 package_name=$1
 package_path=$2
 yalc_packages_file_name="yalc-packages"
 container_id="$(docker-compose ps -q api)"
 container_copied_packages_path="/home/node/copied-packages"
+
 
 if [[ -z "${package_name}" ]]; then
   if ! [[ -f "$yalc_packages_file_name" ]]; then
@@ -28,36 +68,30 @@ if [[ -z "${package_name}" ]]; then
   echo "Reading package list from ${yalc_packages_file_name}"
 
   while IFS== read -r path val; do
+    action="$val"
+    [[ $action == "true" ]] && action="link"
+    [[ $action == "false" ]] && action="unlink"
+
     package_path="$path"
     package_name="$(node -p -e "JSON.parse(process.argv[1]).name" "$(cat ${package_path}/package.json)")"
-    is_enabled="$val"
-
     if [[ $package_name ]]; then
-      if [[ $is_enabled == "true" ]]; then
-        container_destination_path="${container_copied_packages_path}/${package_name}"
-
-        echo "Copying `${package_path}` package code into container to ${container_destination_path}..."
-        docker exec --user node  ${container_id} sh -c "mkdir -p ${container_destination_path}"
-        docker cp "${package_path}/." "${container_id}:${container_destination_path}"
-
-        # Then yalc link into this project
-        echo "Linking package ${package_name} into API..."
-        docker exec --user node  ${container_id} sh -c "cd ${container_destination_path} && yalc push"
-        docker exec --user node  ${container_id} sh -c "cd /usr/local/src/app && yalc link ${package_name}"
-      else
-        echo "Unlinking package ${package_name} from API..."
-        docker exec --user node  ${container_id} sh -c "cd /usr/local/src/app && yalc remove ${package_name}"
-        docker exec --user node  ${container_id} sh -c "rm -rf /usr/local/src/app/node_modules/${package_name}"
+      if [[ $action == "unlink" ]]; then 
+        unlink_package $package_name
+      else 
+        copy_package_to_container $package_name $package_path
+        if [[ $action == "add" ]]; then 
+          add_and_link_package $package_name
+        fi
+        if [[ $action == "link" ]]; then
+          link_package $package_name
+        fi
       fi
     fi
   done < "$yalc_packages_file_name"
 
   echo "Updating packages..."
-  docker exec --user node  ${container_id} sh -c "cd /usr/local/src/app && npm i"
-  docker exec --user node  ${container_id} sh -c  "cd /usr/local/src/app && yalc update"
+  execInContainer "cd /usr/local/src/app && yalc update"
 else
-  container_destination_path="${container_copied_packages_path}/${package_name}"
-
   if [[ -z "${package_path}" ]]; then
     package_name_without_org="${package_name/#@reactioncommerce\/}"
     package_path="../api-plugins/${package_name_without_org}"
@@ -65,18 +99,14 @@ else
     echo "\nUsing local package path ${full_package_path}"
     echo "If this is not correct, specify the correct path as the second argument.\n"
   fi
-
-  echo "Copying `${package_path}` package code into container..."
-  docker-compose exec --user node  api sh -c "mkdir -p ${container_destination_path}"
-  docker --user node cp "${package_path}/." "${container_id}:${container_destination_path}"
-
-  # Then yalc link into this project
-  echo "Linking package into API..."
-  docker-compose exec --user node  api sh -c "cd ${container_destination_path} && yalc push"
-  docker-compose exec --user node  api sh -c "cd /usr/local/src/app && yalc link ${package_name}"
+  copy_package_to_container $package_name $package_path
+  link_package $package_name $package_path
 fi
+
+echo "Installing dependencies..."
+execInContainer "npm i"
 
 # Fool nodemon into thinking something has changed so that it restarts.
 # Touch first file found in /src with .js extension
 echo "Restarting API..."
-docker-compose exec --user node  api sh -c "touch -c $(ls ./src/*.js | head -n1)"
+execInContainer "touch -c $(ls ./src/*.js | head -n1)"
