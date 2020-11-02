@@ -64,6 +64,7 @@
     "@reactioncommerce/file-collections-sa-gridfs": "~0.1.2",
     "@reactioncommerce/logger": "~1.1.3",
     "@reactioncommerce/random": "~1.0.2",
+    "@bls/api-plugin-es-catalog-sync": "file://.yalc/@bls/api-plugin-es-catalog-sync",
     "graphql": "~14.6.0",
     "semver": "~6.3.0"
   },

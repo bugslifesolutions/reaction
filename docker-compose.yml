@@ -23,6 +23,13 @@ services:
       reaction:
     ports:
       - "3000:3000"
+    healthcheck:
+      test: "${DOCKER_HEALTHCHECK_TEST:-curl localhost:3000/}"
+      interval: "60s"
+      timeout: "3s"
+      start_period: "5s"
+      retries: 3  
+    restart: always
 
   mongo:
     image: mongo:4.2.0
@@ -34,6 +41,14 @@ services:
       - "27017:27017"
     volumes:
       - mongo-db4:/data/db
+    healthcheck:
+      test: echo 'db.stats().ok' | mongo localhost:27017/reaction --quiet
+      start_period: 10s
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: always
+  
 
   migration:
     image: reaction-api-migrations:latest
@@ -44,5 +59,6 @@ services:
     networks: 
       default:
       reaction:
+
 volumes:
   mongo-db4:
